@@ -32,7 +32,7 @@ check_requirements() {
     if ! command -v docker-compose &> /dev/null; then
         log_error "Docker Compose is not installed"
         exit 1
-    }
+    fi
 }
 
 # Set up directories and permissions
@@ -128,7 +128,7 @@ main() {
     if [ "$EUID" -ne 0 ]; then 
         log_error "This script must be run as root"
         exit 1
-    }
+    fi
     
     check_requirements
     setup_directories
