@@ -49,7 +49,7 @@ Sistema de gestión para redes de innovación en formación profesional.
 
 1. Clonar el repositorio:
 ```bash
-git clone https://github.com/your-username/innovation-network.git
+git clone https://github.com/atreyu1968/ri-final-3.git
 cd innovation-network
 ```
 
