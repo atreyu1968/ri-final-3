@@ -1,0 +1,168 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/node/Dockerfile
+      args:
+        NODE_ENV: production
+    container_name: innovation-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - VITE_DB_HOST=db
+      - VITE_DB_PORT=3306
+      - VITE_DB_NAME=${DB_NAME}
+    env_file:
+      - .env.production
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    ports:
+      - "3000:3000"
+    networks:
+      - innovation_net
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mariadb:10.11
+    container_name: innovation-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER_FILE: /run/secrets/db_user
+      MARIADB_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mariadb/conf.d:/etc/mysql/conf.d:ro
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:3306:3306"
+    networks:
+      - innovation_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: innovation-phpmyadmin
+    restart: unless-stopped
+    environment:
+      - PMA_HOST=db
+      - PMA_PORT=3306
+      - UPLOAD_LIMIT=128M
+      - MEMORY_LIMIT=512M
+      - MAX_EXECUTION_TIME=300
+    volumes:
+      - ./docker/phpmyadmin/config.user.inc.php:/etc/phpmyadmin/config.user.inc.php:ro
+      - ./docker/phpmyadmin/sessions:/sessions
+    networks:
+      - innovation_net
+    depends_on:
+      - db
+
+  jitsi-meet:
+    image: jitsi/web:latest
+    container_name: innovation-jitsi
+    restart: unless-stopped
+    environment:
+      - ENABLE_AUTH=1
+      - ENABLE_GUESTS=1
+      - PUBLIC_URL=https://${DOMAIN}/meet
+      - XMPP_DOMAIN=meet.jitsi
+      - XMPP_AUTH_DOMAIN=auth.meet.jitsi
+      - XMPP_BOSH_URL_BASE=http://xmpp.meet.jitsi:5280
+    volumes:
+      - ./docker/jitsi/config:/config
+      - ./docker/jitsi/transcripts:/usr/share/jitsi-meet/transcripts
+    networks:
+      - innovation_net
+
+  nextcloud:
+    image: nextcloud:latest
+    container_name: innovation-nextcloud
+    restart: unless-stopped
+    environment:
+      - NEXTCLOUD_ADMIN_USER=${NEXTCLOUD_ADMIN_USER:-admin}
+      - NEXTCLOUD_ADMIN_PASSWORD=${NEXTCLOUD_ADMIN_PASSWORD}
+      - NEXTCLOUD_TRUSTED_DOMAINS=${DOMAIN}
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - nextcloud:/var/www/html
+      - ./docker/nextcloud/config:/var/www/html/config
+      - ./docker/nextcloud/custom_apps:/var/www/html/custom_apps
+      - ./docker/nextcloud/data:/var/www/html/data
+    networks:
+      - innovation_net
+    depends_on:
+      - db
+
+  discourse:
+    image: discourse/discourse:latest
+    container_name: innovation-discourse
+    restart: unless-stopped
+    environment:
+      - DISCOURSE_HOSTNAME=${DOMAIN}
+      - DISCOURSE_DEVELOPER_EMAILS=admin@redinnovacionfp.es
+      - DISCOURSE_DB_HOST=db
+      - DISCOURSE_DB_NAME=${DB_NAME}
+      - DISCOURSE_DB_USERNAME=${DB_USER}
+      - DISCOURSE_DB_PASSWORD=${DB_PASSWORD}
+      - DISCOURSE_SMTP_ADDRESS=${SMTP_HOST}
+      - DISCOURSE_SMTP_PORT=${SMTP_PORT}
+      - DISCOURSE_SMTP_USER_NAME=${SMTP_USER}
+      - DISCOURSE_SMTP_PASSWORD=${SMTP_PASSWORD}
+    volumes:
+      - discourse:/shared
+      - ./docker/discourse/config:/var/www/discourse/config
+    networks:
+      - innovation_net
+    depends_on:
+      - db
+
+  rocketchat:
+    image: rocket.chat:latest
+    container_name: innovation-chat
+    restart: unless-stopped
+    environment:
+      - ROOT_URL=https://${DOMAIN}/chat
+      - MONGO_URL=mongodb://mongo:27017/rocketchat
+      - MONGO_OPLOG_URL=mongodb://mongo:27017/local
+      - MAIL_URL=smtp://${SMTP_USER}:${SMTP_PASSWORD}@${SMTP_HOST}:${SMTP_PORT}
+    volumes:
+      - ./docker/rocketchat/uploads:/app/uploads
+    networks:
+      - innovation_net
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:4.4
+    container_name: innovation-mongo
+    restart: unless-stopped
+    command: mongod --oplogSize 128 --replSet rs0
+    volumes:
+      - ./docker/mongo/data:/data/db
+      - ./docker/mongo/dump:/dump
+    networks:
+      - innovation_net
+
+networks:
+  innovation_net:
+    driver: bridge
+
+volumes:
+  db_data:
+  nextcloud:
+  discourse:
+  mongo_data:
